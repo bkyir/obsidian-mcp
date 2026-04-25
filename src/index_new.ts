@@ -617,22 +617,35 @@ class ObsidianMcpServer {
       }
       
       let content = fs.readFileSync(fullPath, 'utf-8');
-      
+      const originalContent = content;
+      // Normalize line endings for consistent matching
+      content = content.replace(/\r\n/g, '\n');
+
       // Apply edits
+      let appliedCount = 0;
       for (const edit of args.edits) {
         if (edit.type === 'replace' && edit.oldText && edit.newText !== undefined) {
+          const before = content;
           content = content.replace(edit.oldText, edit.newText);
+          if (content !== before) appliedCount++;
         } else if (edit.type === 'append' && edit.text) {
           content += edit.text;
+          appliedCount++;
         } else if (edit.type === 'prepend' && edit.text) {
           content = edit.text + content;
+          appliedCount++;
         }
       }
-      
+
       if (!args.dryRun) {
+        if (content === originalContent.replace(/\r\n/g, '\n')) {
+          return {
+            content: [{ type: 'text', text: `No changes applied (no matches found): ${args.path}` }],
+          };
+        }
         fs.writeFileSync(fullPath, content, 'utf-8');
         return {
-          content: [{ type: 'text', text: `Note updated successfully: ${args.path}` }],
+          content: [{ type: 'text', text: `Note updated successfully: ${args.path} (${appliedCount} edit(s) applied)` }],
         };
       } else {
         return {
