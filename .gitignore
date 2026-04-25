@@ -86,4 +86,4 @@ temp/
 
 # Cache files
 .cache/
-.parcel-cache/
+.parcel-cache/build/
