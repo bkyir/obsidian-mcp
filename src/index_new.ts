@@ -415,7 +415,7 @@ class ObsidianMcpServer {
     try {
       const files = await this.listVaultFiles();
       return {
-        content: [{ type: 'text', text: `Found ${files.length} notes:\\n${files.join('\\n')}` }],
+        content: [{ type: 'text', text: `Found ${files.length} notes:\n${files.join('\n')}` }],
       };
     } catch (error) {
       throw new Error(`Failed to list notes: ${error}`);
@@ -621,19 +621,42 @@ class ObsidianMcpServer {
       // Normalize line endings for consistent matching
       content = content.replace(/\r\n/g, '\n');
 
-      // Apply edits
+      // Apply edits (support both type/operation naming conventions)
       let appliedCount = 0;
       for (const edit of args.edits) {
-        if (edit.type === 'replace' && edit.oldText && edit.newText !== undefined) {
+        const op = edit.operation || edit.type;
+        if ((op === 'replace') && (edit.oldText || edit.target) && (edit.newText !== undefined || edit.replacement !== undefined)) {
+          const oldStr = edit.oldText || edit.target;
+          const newStr = edit.newText !== undefined ? edit.newText : edit.replacement;
           const before = content;
-          content = content.replace(edit.oldText, edit.newText);
+          content = content.replace(oldStr, newStr);
           if (content !== before) appliedCount++;
-        } else if (edit.type === 'append' && edit.text) {
-          content += edit.text;
+        } else if (op === 'append') {
+          const text = edit.text || edit.content || '';
+          content += text;
           appliedCount++;
-        } else if (edit.type === 'prepend' && edit.text) {
-          content = edit.text + content;
+        } else if (op === 'prepend') {
+          const text = edit.text || edit.content || '';
+          content = text + content;
           appliedCount++;
+        } else if (op === 'insert') {
+          const text = edit.text || edit.content || '';
+          const target = edit.target || '';
+          const position = edit.position || 'after';
+          const idx = content.indexOf(target);
+          if (idx !== -1) {
+            if (position === 'before') {
+              content = content.slice(0, idx) + text + content.slice(idx);
+            } else if (position === 'after') {
+              content = content.slice(0, idx + target.length) + text + content.slice(idx + target.length);
+            }
+            appliedCount++;
+          }
+        } else if (op === 'delete' && (edit.oldText || edit.target)) {
+          const delStr = edit.oldText || edit.target;
+          const before = content;
+          content = content.replace(delStr, '');
+          if (content !== before) appliedCount++;
         }
       }
 
@@ -865,9 +888,9 @@ class ObsidianMcpServer {
       
       for (const entry of entries) {
         const fullPath = path.join(dir, entry);
-        const entryRelativePath = path.join(relativePath, entry);
+        const entryRelativePath = path.join(relativePath, entry).replace(/\\/g, '/');
         const stat = fs.statSync(fullPath);
-        
+
         if (stat.isDirectory() && !entry.startsWith('.')) {
           scanDirectory(fullPath, entryRelativePath);
         } else if (entry.endsWith('.md')) {
@@ -902,8 +925,8 @@ class ObsidianMcpServer {
       throw new Error(`Note not found: ${notePath}`);
     }
     
-    const content = fs.readFileSync(fullPath, 'utf-8');
-    const lines = content.split('\\n');
+    const content = fs.readFileSync(fullPath, 'utf-8').replace(/\r\n/g, '\n');
+    const lines = content.split('\n');
     
     const formattedTags = tags.map(tag => tag.startsWith('#') ? tag : `#${tag}`);
     
@@ -949,7 +972,7 @@ class ObsidianMcpServer {
       lines.splice(0, 0, ...frontmatter);
     }
     
-    const newContent = lines.join('\\n');
+    const newContent = lines.join('\n');
     fs.writeFileSync(fullPath, newContent, 'utf-8');
     
     return `Added tags ${formattedTags.join(', ')} to note ${notePath}`;
@@ -964,7 +987,7 @@ class ObsidianMcpServer {
         const fullPath = path.join(this.vaultPath, file);
         const content = fs.readFileSync(fullPath, 'utf-8');
         
-        const frontmatterMatch = content.match(/^---\\n([\\s\\S]*?)\\n---/);
+        const frontmatterMatch = content.match(/^---\r?\n([\\s\\S]*?)\r?\n---/);
         if (frontmatterMatch) {
           const tagsMatch = frontmatterMatch[1].match(/tags:\\s*\\[(.*?)\\]/);
           if (tagsMatch) {
@@ -979,7 +1002,7 @@ class ObsidianMcpServer {
           }
         }
         
-        const inlineTagMatches = content.match(/#[a-zA-Z0-9_-]+/g);
+        const inlineTagMatches = content.match(/#[\p{L}\p{N}_-]+/gu);
         if (inlineTagMatches) {
           inlineTagMatches.forEach(tag => {
             tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
@@ -1005,8 +1028,8 @@ class ObsidianMcpServer {
     
     sortedTags = sortedTags.slice(0, limit);
     
-    const tagList = sortedTags.map(([tag, count]) => `${tag} (${count})`).join('\\n');
-    return `Found ${tagCount.size} unique tags:\\n${tagList}`;
+    const tagList = sortedTags.map(([tag, count]) => `${tag} (${count})`).join('\n');
+    return `Found ${tagCount.size} unique tags:\n${tagList}`;
   }
 
   private async searchNotesByTags(tags: string[], operator: string = 'AND'): Promise<string> {
@@ -1021,7 +1044,7 @@ class ObsidianMcpServer {
         const content = fs.readFileSync(fullPath, 'utf-8');
         const fileTags: string[] = [];
         
-        const frontmatterMatch = content.match(/^---\\n([\\s\\S]*?)\\n---/);
+        const frontmatterMatch = content.match(/^---\r?\n([\\s\\S]*?)\r?\n---/);
         if (frontmatterMatch) {
           const tagsMatch = frontmatterMatch[1].match(/tags:\\s*\\[(.*?)\\]/);
           if (tagsMatch) {
@@ -1033,7 +1056,7 @@ class ObsidianMcpServer {
           }
         }
         
-        const inlineTagMatches = content.match(/#[a-zA-Z0-9_-]+/g);
+        const inlineTagMatches = content.match(/#[\p{L}\p{N}_-]+/gu);
         if (inlineTagMatches) {
           fileTags.push(...inlineTagMatches);
         }
@@ -1053,7 +1076,7 @@ class ObsidianMcpServer {
       }
     }
     
-    return `Found ${results.length} notes with tags [${tags.join(', ')}] (${operator}):\\n${results.join('\\n')}`;
+    return `Found ${results.length} notes with tags [${tags.join(', ')}] (${operator}):\n${results.join('\n')}`;
   }
 
   private async createTemplate(name: string, content: string, variables: string[]): Promise<void> {
@@ -1106,7 +1129,7 @@ class ObsidianMcpServer {
       }
     }
     
-    return 'Found ' + files.length + ' templates:\\n' + templateDetails.join('\\n');
+    return 'Found ' + files.length + ' templates:\n' + templateDetails.join('\n');
   }
 
   private async applyTemplate(templateName: string, notePath: string, variables: any): Promise<string> {
@@ -1437,7 +1460,7 @@ class ObsidianMcpServer {
         const fileContent = fs.readFileSync(path.join(this.vaultPath, file), 'utf-8');
         
         // 提取 Frontmatter 标签
-        const frontmatterMatch = fileContent.match(/^---\\n([\\s\\S]*?)\\n---/);
+        const frontmatterMatch = fileContent.match(/^---\r?\n([\\s\\S]*?)\r?\n---/);
         if (frontmatterMatch) {
           const tagsMatch = frontmatterMatch[1].match(/tags:\\s*\\[(.*?)\\]/);
           if (tagsMatch) {
@@ -1717,7 +1740,7 @@ class ObsidianMcpServer {
     const tags: string[] = [];
     
     // 提取 Frontmatter 标签
-    const frontmatterMatch = content.match(/^---\\n([\\s\\S]*?)\\n---/);
+    const frontmatterMatch = content.match(/^---\r?\n([\\s\\S]*?)\r?\n---/);
     if (frontmatterMatch) {
       const tagsMatch = frontmatterMatch[1].match(/tags:\\s*\\[(.*?)\\]/);
       if (tagsMatch) {

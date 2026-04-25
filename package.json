@@ -1,6 +1,6 @@
 {
-  "name": "@jianruidutong/obsidian-mcp",
-  "version": "2.0.0",
+  "name": "@bkyir/obsidian-mcp",
+  "version": "2.0.1",
   "main": "build/index.js",
   "type": "module",
   "bin": {
@@ -38,11 +38,11 @@
   "description": "Enhanced Obsidian MCP Server with 25 Advanced AI Tools - Intelligent Knowledge Management with Smart Analysis, Auto-Linking, and Knowledge Graph Generation",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jianruidutong/obsidian-mcp.git"
+    "url": "https://github.com/bkyir/obsidian-mcp.git"
   },
-  "homepage": "https://github.com/jianruidutong/obsidian-mcp",
+  "homepage": "https://github.com/bkyir/obsidian-mcp",
   "bugs": {
-    "url": "https://github.com/jianruidutong/obsidian-mcp/issues"
+    "url": "https://github.com/bkyir/obsidian-mcp/issues"
   },
   "engines": {
     "node": ">=16.0.0"
